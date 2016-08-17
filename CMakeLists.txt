@@ -20,7 +20,7 @@ endif()
 #########################################################
 # INCLUDES
 set(ULTRASND_INC_PATH
-    ${ros_ultrasonic_bumper_SOURCE_DIR}/src)
+    ${rs_ros_sensor_board_SOURCE_DIR}/src)
 
 include_directories(${ULTRASND_INC_PATH})
 #########################################################
