@@ -13,16 +13,19 @@ using namespace ros_ultrasonic_bumper;
 
 #define INVALID_REMAP 4.0f
 
-typedef struct _data_out
+#define	MSG_ULTRASOUND	0x01
+
+typedef struct _ultrasnd_data_out
 {
-    uint16_t ctrl_frame_0;        // 0x5AA5
-    uint16_t byte_count;          // number of bytes following
-    uint32_t ticks;               // ticks since system start
-    float not_valid_val;          // value for not valid distances
+    uint16_t ctrl_frame_0;   // 0xA55A
+    uint8_t byte_count;   // number of bytes following
+    uint8_t type;			// Message type
+    uint32_t ticks;       // ticks since system start
+    float not_valid_val;  // value for not valid distances
     float distances[MAX_SONAR];   // distances in meters
-    uint16_t sonar_active;        // Number of sonar connected;
-    uint16_t ctrl_frame_1;        // <LF><CR>
-} DataOut;
+    uint16_t sonar_active; // Number of sonar connected;
+    uint16_t ctrl_frame_1;   // 0x5AA5
+} UltraSndDataOut;
 
 
 // >>>>> Global functions
@@ -113,7 +116,7 @@ int main(int argc, char** argv)
 
     string ser_buffer;
 
-    DataOut received;
+    UltraSndDataOut received;
     uint8_t ctrl0_0;
     uint8_t ctrl0_1;
 
@@ -151,7 +154,7 @@ int main(int argc, char** argv)
                 // <<<<< Searching for first byte: 0xA5
 
                 // >>>>> Data received is complete?
-                if( ser_buffer.size()<sizeof(DataOut) )
+                if( ser_buffer.size()<sizeof(UltraSndDataOut) )
                 {
                     ROS_DEBUG_STREAM( "Data incomplete" );
                     continue;
@@ -164,27 +167,38 @@ int main(int argc, char** argv)
                     continue;
                 // <<<<< Second byte is correct? [0x5A]
 
-                // Data copy
-                memcpy( (char*)&received, ser_buffer.data(), sizeof(DataOut) );
+                uint8_t type=0xff;
 
-                // >>>>> Terminator is correct? [0x0d0a]
-                if( received.ctrl_frame_1 != 0x0d0a )
+                type = ser_buffer.at(3);
+
+                if( type==MSG_ULTRASOUND )
                 {
-                    ROS_DEBUG_STREAM( "Bad data!!!" );
+                    // Data copy
+                    memcpy( (char*)&received, ser_buffer.data(), sizeof(UltraSndDataOut) );
 
-                    // If the terminator is not correct I remove only the Synchronizing
-                    // word [0x5AA5] because it was a false beginning.
-                    // The next cycle I start searching for first byte [0xA5] again
+                    // >>>>> Terminator is correct? [0x0d0a]
+                    if( received.ctrl_frame_1 != 0x0d0a )
+                    {
+                        ROS_DEBUG_STREAM( "Bad data!!!" );
 
+                        // If the terminator is not correct I remove only the Synchronizing
+                        // word [0x5AA5] because it was a false beginning.
+                        // The next cycle I start searching for first byte [0xA5] again
+
+                        ser_buffer.erase( ser_buffer.begin(),
+                                          ser_buffer.begin()+2 );
+                        continue;
+                    }
+                    // <<<<< Terminator is correct? [0x0d0a]
+
+                    // Removing processed data
                     ser_buffer.erase( ser_buffer.begin(),
-                                      ser_buffer.begin()+2 );
-                    continue;
+                                      ser_buffer.begin()+ sizeof(UltraSndDataOut) );
                 }
-                // <<<<< Terminator is correct? [0x0d0a]
-
-                // Removing processed data
-                ser_buffer.erase( ser_buffer.begin(),
-                                  ser_buffer.begin()+ sizeof(DataOut) );
+                else
+                {
+                    ROS_WARN_STREAM( "Received invalide message type: " << type );
+                }
             }
             else // Distance bypass to not block "twist messages"
             {
