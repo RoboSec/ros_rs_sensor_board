@@ -1,0 +1,116 @@
+#include <QCoreApplication>
+#include <stdlib.h>
+#include <stdio.h>
+#include <QDebug>
+
+
+#include <QtSerialPort>
+
+#define MAX_SONAR 4
+
+typedef struct _data_out
+{
+    quint16 ctrl_frame_0;        // 0x5AA5
+    quint16 byte_count;          // number of bytes following
+    quint32 ticks;               // ticks since system start
+    float not_valid_val;          // value for not valid distances
+    float distances[MAX_SONAR];   // distances in meters
+    quint16 sonar_active;        // Number of sonar connected;
+    quint16 ctrl_frame_1;        // <LF><CR>
+} DataOut;
+
+int main(int argc, char *argv[])
+{
+    QCoreApplication a(argc, argv);
+
+    QSerialPort serial;
+
+    QByteArray buffer;
+
+    serial.setPortName( "COM18" );
+    if( !serial.open( QIODevice::ReadWrite ) )
+    {
+        return EXIT_FAILURE;
+    }
+    serial.setBaudRate( QSerialPort::Baud115200);
+    serial.setDataBits( QSerialPort::Data8);
+    serial.setParity( QSerialPort::NoParity );
+    serial.setStopBits( QSerialPort::OneStop );
+
+    QByteArray out;
+
+    forever
+    {
+        DataOut received;
+        quint8 ctrl0_0;
+        quint8 ctrl0_1;
+
+        if(serial.waitForReadyRead(-1))
+        {
+            // Data Reading
+            out += serial.readAll();
+
+            // >>>>> Searching for first byte: 0xA5
+            bool found = false;
+            for( int i=0; i<out.size(); i++ )
+            {
+                ctrl0_0 = out.at(i);
+                if( ctrl0_0 != 0xa5 )
+                    out.remove(0,1);
+                else
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if(!found)
+                continue;
+            // <<<<< Searching for first byte: 0xA5
+
+            // >>>>> Data received is complete?
+            if( out.size()<sizeof(DataOut) )
+            {
+                //qDebug() << "Data incomplete";
+                continue;
+            }
+            // <<<<< Data received is complete?
+
+            // >>>>> Second byte is correct? [0x5A]
+            ctrl0_1 = out.at(1);
+            if( ctrl0_1 != 0x5a )
+                continue;
+            // <<<<< Second byte is correct? [0x5A]
+
+            // Data copy
+            memcpy( (char*)&received, out.constData(), sizeof(DataOut) );
+
+            // >>>>> Terminator is correct? [0x0d0a]
+            if( received.ctrl_frame_1 != 0x0d0a )
+            {
+                qDebug() << "Bad data!!!";
+
+                // If the terminator is not correct I remove only the Synchronizing
+                // word [0x5AA5] because it was a false beginning.
+                // The next cycle I start searching for first byte [0xA5] again
+
+                out.remove(0,2);
+                continue;
+            }
+            // <<<<< Terminator is correct? [0x0d0a]
+
+            // Removing processed data
+            out.remove(0,sizeof(DataOut));
+
+            qDebug() << QObject::tr("[%1] Bytes: %2 - [%3][%4][%5][%6]")
+                        .arg(received.ticks)
+                        .arg(received.byte_count)
+                        .arg(received.distances[0],5,'f',3)
+                        .arg(received.distances[1],5,'f',3)
+                        .arg(received.distances[2],5,'f',3)
+                        .arg(received.distances[3],5,'f',3);
+        }
+    }
+
+    return a.exec();
+}
