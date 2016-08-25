@@ -1,31 +1,47 @@
 #include <ros/ros.h>
+#include <ros/service.h>
 #include <serial/serial.h>
 #include <stdlib.h>
 #include <string>
 #include <angles/angles.h>
 
-#include <ros_ultrasonic_bumper/ultrasnd_bump_ranges.h>
+#include <rs_ros_sensor_board/ultrasnd_bump_ranges.h>
+#include <rs_ros_sensor_board/camera_light.h>
 
 using namespace std;
-using namespace ros_ultrasonic_bumper;
+using namespace rs_ros_sensor_board;
 
-#define MAX_SONAR 4
+#define MAX_USND_SENS 4
 
 #define INVALID_REMAP 4.0f
 
 #define	MSG_ULTRASOUND	0x01
+#define MSG_PWM			0X02
+
+#define CTRL_WORD_0	0xA55A
+#define CTRL_WORD_1 0x0D0A
 
 typedef struct _ultrasnd_data_out
 {
-    uint16_t ctrl_frame_0;   // 0xA55A
-    uint8_t byte_count;   // number of bytes following
+    uint16_t ctrl_frame_0;		// 0xA55A
+    uint8_t byte_count;   		// number of bytes following
+    uint8_t type;				// Message type
+    uint32_t ticks;       		// ticks since system start
+    float not_valid_val;  		// value for not valid distances
+    float distances[MAX_USND_SENS];	// distances in meters
+    uint16_t sonar_active; 		// Number of sonar connected;
+    uint16_t ctrl_frame_1;  	// 0x0D0A
+} UltraSndDataOut; // 20 bytes
+
+typedef struct _pwm_data
+{
+    uint16_t ctrl_frame_0;	// 0xA55A
+    uint8_t byte_count;   	// number of bytes following
     uint8_t type;			// Message type
-    uint32_t ticks;       // ticks since system start
-    float not_valid_val;  // value for not valid distances
-    float distances[MAX_SONAR];   // distances in meters
-    uint16_t sonar_active; // Number of sonar connected;
-    uint16_t ctrl_frame_1;   // 0x5AA5
-} UltraSndDataOut;
+    float frequency;  		// Frequency of the PWM
+    float dutyCycle;   		// Duty Cycle
+    uint16_t ctrl_frame_1;  // 0x0D0A
+} PwmData; // 14 bytes
 
 
 // >>>>> Global functions
@@ -50,12 +66,38 @@ serial::Serial serPort;
 #define DEFAULT_BAUDRATE    115200
 #define DEFAULT_TIMEOUT     500
 
+bool changeLight( camera_light::Request  &req,
+                  camera_light::Response &res)
+{
+    if( req.lightPwmFreq > 32767.0f ||
+            req.lightPwmDutyCycle > 1.0f )
+    {
+        ROS_WARN_STREAM( "Wrong Light PWM parameter" );
+        res.settingOk = false;
+        return false;
+    }
+
+    PwmData lightPwmMsg;
+
+    lightPwmMsg.ctrl_frame_0 = CTRL_WORD_0;
+    lightPwmMsg.byte_count = 11;
+    lightPwmMsg.type = MSG_PWM;
+    lightPwmMsg.frequency = req.lightPwmFreq;
+    lightPwmMsg.dutyCycle = req.lightPwmDutyCycle;
+    lightPwmMsg.ctrl_frame_1 = CTRL_WORD_1;
+
+    serPort.write( (uint8_t*)(&lightPwmMsg), sizeof(PwmData) );
+
+    res.settingOk = true;
+    return true;
+}
+
 int main(int argc, char** argv)
 {
-    ros::init(argc, argv, "ultrasonic_bumper_node");
+    ros::init(argc, argv, "rs_sensor_board_node");
 
     ROS_INFO_STREAM("-----------------------------------\r");
-    ROS_INFO_STREAM("  Ultrasonic Bumper Board driver   \r");
+    ROS_INFO_STREAM("    RoboSec Sensor Board driver     \r");
     ROS_INFO_STREAM("-----------------------------------\r");
 
     nh = new ros::NodeHandle(); // Node
@@ -68,6 +110,10 @@ int main(int argc, char** argv)
 
     // Load parameters from param server
     loadParams();
+
+    // >>>>> Light change service
+    ros::ServiceServer lightSrv = nh->advertiseService( "camera_light", changeLight );
+    // <<<<< Light change service
 
     // >>>>> Output message
     ultrasnd_bump_ranges rangeMsg;

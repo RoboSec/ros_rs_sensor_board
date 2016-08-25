@@ -1,0 +1,7 @@
+# Camera Light PWM settings
+#PWM Frequency [0 to 32767 hz]
+float32 lightPwmFreq
+#PWM Duty Cycle [0 to 1]
+float32 lightPwmDutyCycle
+---
+bool settingOk

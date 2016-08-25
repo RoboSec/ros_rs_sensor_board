@@ -40,6 +40,13 @@ set_source_files_properties(${MSG} PROPERTIES HEADER_FILE_ONLY TRUE)
 #########################################################
 
 #########################################################
+# SRV FILES
+# Adding SRV files to project source, without compiling them
+file(GLOB_RECURSE SRV . *.srv)
+set_source_files_properties(${SRV} PROPERTIES HEADER_FILE_ONLY TRUE)
+#########################################################
+
+#########################################################
 # LAUNCH FILES
 # Adding LAUNCH files to project source, without compiling them
 file(GLOB_RECURSE LAUNCH . *.launch)
@@ -59,6 +66,11 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
   FILES
   ultrasnd_bump_ranges.msg
+)
+
+add_service_files(
+  FILES
+  camera_light.srv
 )
 
 generate_messages(
@@ -86,6 +98,7 @@ add_executable(
     ${ULTRASND_HDR}
     ${ULTRASND_SRC}
     ${MSG}
+    ${SRV}
     ${LAUNCH}
 )
 
