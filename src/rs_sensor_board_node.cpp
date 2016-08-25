@@ -40,8 +40,9 @@ typedef struct _pwm_data
     uint8_t type;			// Message type
     float frequency;  		// Frequency of the PWM
     float dutyCycle;   		// Duty Cycle
+    uint16_t dummy_word;	// Dummy word to get 4 bytes alignment
     uint16_t ctrl_frame_1;  // 0x0D0A
-} PwmData; // 14 bytes
+} PwmData; // 16 bytes
 
 
 // >>>>> Global functions
@@ -66,30 +67,33 @@ serial::Serial serPort;
 #define DEFAULT_BAUDRATE    115200
 #define DEFAULT_TIMEOUT     500
 
-bool changeLight( camera_light::Request  &req,
-                  camera_light::Response &res)
+bool setLightParams( float freq, float dutyCycle )
 {
-    if( req.lightPwmFreq > 32767.0f ||
-            req.lightPwmDutyCycle > 1.0f )
+    if( freq > 32767.0f || dutyCycle > 1.0f )
     {
         ROS_WARN_STREAM( "Wrong Light PWM parameter" );
-        res.settingOk = false;
         return false;
     }
 
     PwmData lightPwmMsg;
 
     lightPwmMsg.ctrl_frame_0 = CTRL_WORD_0;
-    lightPwmMsg.byte_count = 11;
+    lightPwmMsg.byte_count = sizeof(PwmData)-3;
     lightPwmMsg.type = MSG_PWM;
-    lightPwmMsg.frequency = req.lightPwmFreq;
-    lightPwmMsg.dutyCycle = req.lightPwmDutyCycle;
+    lightPwmMsg.frequency = freq;
+    lightPwmMsg.dutyCycle = dutyCycle;
     lightPwmMsg.ctrl_frame_1 = CTRL_WORD_1;
 
     serPort.write( (uint8_t*)(&lightPwmMsg), sizeof(PwmData) );
 
-    res.settingOk = true;
     return true;
+}
+
+bool changeLightCallback( camera_light::Request  &req,
+                  camera_light::Response &res)
+{
+    res.settingOk = setLightParams( req.lightPwmFreq, req.lightPwmDutyCycle );
+    return res.settingOk;
 }
 
 int main(int argc, char** argv)
@@ -112,7 +116,7 @@ int main(int argc, char** argv)
     loadParams();
 
     // >>>>> Light change service
-    ros::ServiceServer lightSrv = nh->advertiseService( "camera_light", changeLight );
+    ros::ServiceServer lightSrv = nh->advertiseService( "camera_light", changeLightCallback );
     // <<<<< Light change service
 
     // >>>>> Output message
@@ -167,6 +171,9 @@ int main(int argc, char** argv)
     uint8_t ctrl0_1;
 
     uint8_t connect_retry = 0;
+
+    // Camera Light turned off on starting
+    setLightParams( 0.0f, 0.0f );
 
     while( ros::ok() )
     {
