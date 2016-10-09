@@ -71,6 +71,7 @@ add_message_files(
 add_service_files(
   FILES
   camera_light.srv
+  ledbar.srv
 )
 
 generate_messages(

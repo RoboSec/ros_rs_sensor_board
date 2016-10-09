@@ -7,6 +7,9 @@
 
 #include <rs_ros_sensor_board/ultrasnd_bump_ranges.h>
 #include <rs_ros_sensor_board/camera_light.h>
+#include <rs_ros_sensor_board/ledbar.h>
+
+#define	__packed	__attribute__((__packed__))
 
 using namespace std;
 using namespace rs_ros_sensor_board;
@@ -15,13 +18,14 @@ using namespace rs_ros_sensor_board;
 
 #define INVALID_REMAP 4.0f
 
-#define	MSG_ULTRASOUND	0x01
-#define MSG_PWM			0X02
+#define	MSG_ULTRASOUND      0x01
+#define MSG_PWM             0X02
+#define MSG_MAX_LEDBAR_VAL	0X03
 
 #define CTRL_WORD_0	0xA55A
 #define CTRL_WORD_1 0x0D0A
 
-typedef struct _ultrasnd_data_out
+typedef struct __packed _ultrasnd_data_out
 {
     uint16_t ctrl_frame_0;		// 0xA55A
     uint8_t byte_count;   		// number of bytes following
@@ -33,16 +37,24 @@ typedef struct _ultrasnd_data_out
     uint16_t ctrl_frame_1;  	// 0x0D0A
 } UltraSndDataOut; // 20 bytes
 
-typedef struct _pwm_data
+typedef struct __packed _pwm_data
 {
     uint16_t ctrl_frame_0;	// 0xA55A
     uint8_t byte_count;   	// number of bytes following
     uint8_t type;			// Message type
     float frequency;  		// Frequency of the PWM
     float dutyCycle;   		// Duty Cycle
-    uint16_t dummy_word;	// Dummy word to get 4 bytes alignment
     uint16_t ctrl_frame_1;  // 0x0D0A
 } PwmData; // 16 bytes
+
+typedef struct __packed _ledbar_data
+{
+    uint16_t ctrl_frame_0;	// 0xA55A
+    uint8_t byte_count;   	// number of bytes following
+    uint8_t type;			// Message type
+    uint8_t ledMaxValUSnd; 	// Maximum value of the leds showing Ultrasound Sensor distance
+    uint16_t ctrl_frame_1;  // 0x0D0A
+} LedBarData;
 
 
 // >>>>> Global functions
@@ -84,15 +96,39 @@ bool setLightParams( float freq, float dutyCycle )
     lightPwmMsg.dutyCycle = dutyCycle;
     lightPwmMsg.ctrl_frame_1 = CTRL_WORD_1;
 
-    serPort.write( (uint8_t*)(&lightPwmMsg), sizeof(PwmData) );
+    if( serPort.write( (uint8_t*)(&lightPwmMsg), sizeof(PwmData) ) == sizeof(PwmData) )
+        return true;
+    else
+        return false;
+}
 
-    return true;
+bool setLedBarMaxVal( uint8_t maxVal )
+{
+    LedBarData data;
+
+    data.ctrl_frame_0 = CTRL_WORD_0;
+    data.byte_count = sizeof(LedBarData)-3;
+    data.type = MSG_MAX_LEDBAR_VAL;
+    data.ledMaxValUSnd = maxVal;
+    data.ctrl_frame_1 = CTRL_WORD_1;
+
+    if( serPort.write( (uint8_t*)(&data), sizeof(LedBarData) ) == sizeof(LedBarData) )
+        return true;
+    else
+        return false;
 }
 
 bool changeLightCallback( camera_light::Request  &req,
-                  camera_light::Response &res)
+                          camera_light::Response &res)
 {
     res.settingOk = setLightParams( req.lightPwmFreq, req.lightPwmDutyCycle );
+    return res.settingOk;
+}
+
+bool changeMaxLedbarValue( ledbar::Request  &req,
+                          ledbar::Response &res)
+{
+    res.settingOk = setLedBarMaxVal( req.ledMaxValUSnd );
     return res.settingOk;
 }
 
@@ -118,6 +154,10 @@ int main(int argc, char** argv)
     // >>>>> Light change service
     ros::ServiceServer lightSrv = nh->advertiseService( "camera_light", changeLightCallback );
     // <<<<< Light change service
+
+    // >>>>> Ledbar Max Value setting service
+    ros::ServiceServer ledMaxValSrv = nh->advertiseService( "ledbar", changeMaxLedbarValue );
+    // <<<<< Ledbar Max Value setting service
 
     // >>>>> Output message
     ultrasnd_bump_ranges rangeMsg;
