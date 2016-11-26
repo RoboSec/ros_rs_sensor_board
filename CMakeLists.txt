@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8.7)
 
-project(rs_ros_sensor_board)
+project(ros_rs_sensor_board)
 
 #########################################################
 ## Options
