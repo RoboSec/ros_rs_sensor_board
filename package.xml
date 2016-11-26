@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package>
-  <name>rs_ros_sensor_board</name>
+  <name>ros_rs_sensor_board</name>
   <version>0.1.0</version>
   <description>ROS Package to connect to RoboSec Sensor Board</description>
 
