@@ -5,14 +5,14 @@
 #include <string>
 #include <angles/angles.h>
 
-#include <rs_ros_sensor_board/ultrasnd_bump_ranges.h>
-#include <rs_ros_sensor_board/camera_light.h>
-#include <rs_ros_sensor_board/ledbar.h>
+#include <ros_rs_sensor_board/rs_ultrasnd_bump_ranges.h>
+#include <ros_rs_sensor_board/rs_camera_light.h>
+#include <ros_rs_sensor_board/rs_ledbar.h>
 
 #define	__packed	__attribute__((__packed__))
 
 using namespace std;
-using namespace rs_ros_sensor_board;
+using namespace ros_rs_sensor_board;
 
 #define MAX_USND_SENS 4
 
@@ -118,15 +118,15 @@ bool setLedBarMaxVal( uint8_t maxVal )
         return false;
 }
 
-bool changeLightCallback( camera_light::Request  &req,
-                          camera_light::Response &res)
+bool changeLightCallback( rs_camera_light::Request  &req,
+                          rs_camera_light::Response &res)
 {
     res.settingOk = setLightParams( req.lightPwmFreq, req.lightPwmDutyCycle );
     return res.settingOk;
 }
 
-bool changeMaxLedbarValue( ledbar::Request  &req,
-                          ledbar::Response &res)
+bool changeMaxLedbarValue( rs_ledbar::Request  &req,
+                          rs_ledbar::Response &res)
 {
     res.settingOk = setLedBarMaxVal( req.ledMaxValUSnd );
     return res.settingOk;
@@ -152,15 +152,15 @@ int main(int argc, char** argv)
     loadParams();
 
     // >>>>> Light change service
-    ros::ServiceServer lightSrv = nh->advertiseService( "camera_light", changeLightCallback );
+    ros::ServiceServer lightSrv = nh->advertiseService( "rs_camera_light", changeLightCallback );
     // <<<<< Light change service
 
     // >>>>> Ledbar Max Value setting service
-    ros::ServiceServer ledMaxValSrv = nh->advertiseService( "ledbar", changeMaxLedbarValue );
+    ros::ServiceServer ledMaxValSrv = nh->advertiseService( "rs_ledbar", changeMaxLedbarValue );
     // <<<<< Ledbar Max Value setting service
 
     // >>>>> Output message
-    ultrasnd_bump_ranges rangeMsg;
+    rs_ultrasnd_bump_ranges rangeMsg;
 
     std_msgs::Header headerFL;
     headerFL.frame_id = "ultraSnd_FL";
@@ -195,7 +195,7 @@ int main(int argc, char** argv)
     rangeMsg.sensor_RL.min_range = 0.0f;
     rangeMsg.sensor_RL.max_range = INVALID_REMAP;
 
-    static ros::Publisher range_pub = nh->advertise<ultrasnd_bump_ranges>( "ranges", 10, false );
+    static ros::Publisher range_pub = nh->advertise<rs_ultrasnd_bump_ranges>( "ranges", 10, false );
     // <<<<< Output message
 
     // >>>>> Serial driver

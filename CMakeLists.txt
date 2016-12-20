@@ -20,7 +20,7 @@ endif()
 #########################################################
 # INCLUDES
 set(ULTRASND_INC_PATH
-    ${rs_ros_sensor_board_SOURCE_DIR}/src)
+    ${${PROJECT_NAME}_SOURCE_DIR}/src)
 
 include_directories(${ULTRASND_INC_PATH})
 #########################################################
@@ -65,13 +65,13 @@ find_package(catkin REQUIRED COMPONENTS
 
 add_message_files(
   FILES
-  ultrasnd_bump_ranges.msg
+  rs_ultrasnd_bump_ranges.msg
 )
 
 add_service_files(
   FILES
-  camera_light.srv
-  ledbar.srv
+  rs_camera_light.srv
+  rs_ledbar.srv
 )
 
 generate_messages(
