@@ -1,5 +1,5 @@
 <launch>
-  <node pkg="rs_ros_sensor_board" type="rs_sensor_board_node" name="rs_sensor_board_node" output="screen">
+  <node pkg="ros_rs_sensor_board" type="rs_sensor_board_node" name="rs_sensor_board_node" output="screen">
      <!-- Serial port [Default "/dev/ttyUSB0"] -->
      <param name="serial_port" value="/dev/ttyUSB0"/>
      
