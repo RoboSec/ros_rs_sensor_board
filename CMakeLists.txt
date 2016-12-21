@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8.7)
 
-project(rs_ros_sensor_board)
+project(ros_rs_sensor_board)
 
 #########################################################
 ## Options
@@ -20,7 +20,7 @@ endif()
 #########################################################
 # INCLUDES
 set(ULTRASND_INC_PATH
-    ${ros_ultrasonic_bumper_SOURCE_DIR}/src)
+    ${${PROJECT_NAME}_SOURCE_DIR}/src)
 
 include_directories(${ULTRASND_INC_PATH})
 #########################################################
@@ -37,6 +37,13 @@ file(GLOB_RECURSE ULTRASND_HDR *.h)
 # Adding MSG files to project source, without compiling them
 file(GLOB_RECURSE MSG . *.msg)
 set_source_files_properties(${MSG} PROPERTIES HEADER_FILE_ONLY TRUE)
+#########################################################
+
+#########################################################
+# SRV FILES
+# Adding SRV files to project source, without compiling them
+file(GLOB_RECURSE SRV . *.srv)
+set_source_files_properties(${SRV} PROPERTIES HEADER_FILE_ONLY TRUE)
 #########################################################
 
 #########################################################
@@ -58,7 +65,13 @@ find_package(catkin REQUIRED COMPONENTS
 
 add_message_files(
   FILES
-  ultrasnd_bump_ranges.msg
+  rs_ultrasnd_bump_ranges.msg
+)
+
+add_service_files(
+  FILES
+  rs_camera_light.srv
+  rs_ledbar.srv
 )
 
 generate_messages(
@@ -86,6 +99,7 @@ add_executable(
     ${ULTRASND_HDR}
     ${ULTRASND_SRC}
     ${MSG}
+    ${SRV}
     ${LAUNCH}
 )
 

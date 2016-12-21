@@ -1,0 +1,6 @@
+# Max value of the led color
+# indicating the sonar distance
+#ledMaxValUSnd [0 to 255]
+uint8 ledMaxValUSnd
+---
+bool settingOk

@@ -1,28 +1,60 @@
 #include <ros/ros.h>
+#include <ros/service.h>
 #include <serial/serial.h>
 #include <stdlib.h>
 #include <string>
 #include <angles/angles.h>
 
-#include <ros_ultrasonic_bumper/ultrasnd_bump_ranges.h>
+#include <ros_rs_sensor_board/rs_ultrasnd_bump_ranges.h>
+#include <ros_rs_sensor_board/rs_camera_light.h>
+#include <ros_rs_sensor_board/rs_ledbar.h>
+
+#define	__packed	__attribute__((__packed__))
 
 using namespace std;
-using namespace ros_ultrasonic_bumper;
+using namespace ros_rs_sensor_board;
 
-#define MAX_SONAR 4
+#define MAX_USND_SENS 4
 
 #define INVALID_REMAP 4.0f
 
-typedef struct _data_out
+#define	MSG_ULTRASOUND      0x01
+#define MSG_PWM             0X02
+#define MSG_MAX_LEDBAR_VAL	0X03
+
+#define CTRL_WORD_0	0xA55A
+#define CTRL_WORD_1 0x0D0A
+
+typedef struct __packed _ultrasnd_data_out
 {
-    uint16_t ctrl_frame_0;        // 0x5AA5
-    uint16_t byte_count;          // number of bytes following
-    uint32_t ticks;               // ticks since system start
-    float not_valid_val;          // value for not valid distances
-    float distances[MAX_SONAR];   // distances in meters
-    uint16_t sonar_active;        // Number of sonar connected;
-    uint16_t ctrl_frame_1;        // <LF><CR>
-} DataOut;
+    uint16_t ctrl_frame_0;		// 0xA55A
+    uint8_t byte_count;   		// number of bytes following
+    uint8_t type;				// Message type
+    uint32_t ticks;       		// ticks since system start
+    float not_valid_val;  		// value for not valid distances
+    float distances[MAX_USND_SENS];	// distances in meters
+    uint16_t sonar_active; 		// Number of sonar connected;
+    uint16_t ctrl_frame_1;  	// 0x0D0A
+} UltraSndDataOut; // 20 bytes
+
+typedef struct __packed _pwm_data
+{
+    uint16_t ctrl_frame_0;	// 0xA55A
+    uint8_t byte_count;   	// number of bytes following
+    uint8_t type;			// Message type
+    float frequency;  		// Frequency of the PWM
+    float dutyCycle;   		// Duty Cycle
+    uint16_t ctrl_frame_1;  // 0x0D0A
+} PwmData; // 16 bytes
+
+typedef struct __packed _ledbar_data
+{
+    uint16_t ctrl_frame_0;	// 0xA55A
+    uint8_t byte_count;   	// number of bytes following
+    uint8_t type;			// Message type
+    uint8_t ledMaxValUSnd; 	// Maximum value of the leds showing Ultrasound Sensor distance
+    uint16_t ctrl_frame_1;  // 0x0D0A
+} LedBarData;
 
 
 // >>>>> Global functions
@@ -47,12 +79,65 @@ serial::Serial serPort;
 #define DEFAULT_BAUDRATE    115200
 #define DEFAULT_TIMEOUT     500
 
+bool setLightParams( float freq, float dutyCycle )
+{
+    if( freq > 32767.0f || dutyCycle > 1.0f )
+    {
+        ROS_WARN_STREAM( "Wrong Light PWM parameter" );
+        return false;
+    }
+
+    PwmData lightPwmMsg;
+
+    lightPwmMsg.ctrl_frame_0 = CTRL_WORD_0;
+    lightPwmMsg.byte_count = sizeof(PwmData)-3;
+    lightPwmMsg.type = MSG_PWM;
+    lightPwmMsg.frequency = freq;
+    lightPwmMsg.dutyCycle = dutyCycle;
+    lightPwmMsg.ctrl_frame_1 = CTRL_WORD_1;
+
+    if( serPort.write( (uint8_t*)(&lightPwmMsg), sizeof(PwmData) ) == sizeof(PwmData) )
+        return true;
+    else
+        return false;
+}
+
+bool setLedBarMaxVal( uint8_t maxVal )
+{
+    LedBarData data;
+
+    data.ctrl_frame_0 = CTRL_WORD_0;
+    data.byte_count = sizeof(LedBarData)-3;
+    data.type = MSG_MAX_LEDBAR_VAL;
+    data.ledMaxValUSnd = maxVal;
+    data.ctrl_frame_1 = CTRL_WORD_1;
+
+    if( serPort.write( (uint8_t*)(&data), sizeof(LedBarData) ) == sizeof(LedBarData) )
+        return true;
+    else
+        return false;
+}
+
+bool changeLightCallback( rs_camera_light::Request  &req,
+                          rs_camera_light::Response &res)
+{
+    res.settingOk = setLightParams( req.lightPwmFreq, req.lightPwmDutyCycle );
+    return res.settingOk;
+}
+
+bool changeMaxLedbarValue( rs_ledbar::Request  &req,
+                          rs_ledbar::Response &res)
+{
+    res.settingOk = setLedBarMaxVal( req.ledMaxValUSnd );
+    return res.settingOk;
+}
+
 int main(int argc, char** argv)
 {
-    ros::init(argc, argv, "ultrasonic_bumper_node");
+    ros::init(argc, argv, "rs_sensor_board_node");
 
     ROS_INFO_STREAM("-----------------------------------\r");
-    ROS_INFO_STREAM("  Ultrasonic Bumper Board driver   \r");
+    ROS_INFO_STREAM("    RoboSec Sensor Board driver     \r");
     ROS_INFO_STREAM("-----------------------------------\r");
 
     nh = new ros::NodeHandle(); // Node
@@ -66,8 +151,16 @@ int main(int argc, char** argv)
     // Load parameters from param server
     loadParams();
 
+    // >>>>> Light change service
+    ros::ServiceServer lightSrv = nh->advertiseService( "rs_camera_light", changeLightCallback );
+    // <<<<< Light change service
+
+    // >>>>> Ledbar Max Value setting service
+    ros::ServiceServer ledMaxValSrv = nh->advertiseService( "rs_ledbar", changeMaxLedbarValue );
+    // <<<<< Ledbar Max Value setting service
+
     // >>>>> Output message
-    ultrasnd_bump_ranges rangeMsg;
+    rs_ultrasnd_bump_ranges rangeMsg;
 
     std_msgs::Header headerFL;
     headerFL.frame_id = "ultraSnd_FL";
@@ -102,7 +195,7 @@ int main(int argc, char** argv)
     rangeMsg.sensor_RL.min_range = 0.0f;
     rangeMsg.sensor_RL.max_range = INVALID_REMAP;
 
-    static ros::Publisher range_pub = nh->advertise<ultrasnd_bump_ranges>( "ranges", 10, false );
+    static ros::Publisher range_pub = nh->advertise<rs_ultrasnd_bump_ranges>( "ranges", 10, false );
     // <<<<< Output message
 
     // >>>>> Serial driver
@@ -113,11 +206,14 @@ int main(int argc, char** argv)
 
     string ser_buffer;
 
-    DataOut received;
+    UltraSndDataOut received;
     uint8_t ctrl0_0;
     uint8_t ctrl0_1;
 
     uint8_t connect_retry = 0;
+
+    // Camera Light turned off on starting
+    setLightParams( 0.0f, 0.0f );
 
     while( ros::ok() )
     {
@@ -151,7 +247,7 @@ int main(int argc, char** argv)
                 // <<<<< Searching for first byte: 0xA5
 
                 // >>>>> Data received is complete?
-                if( ser_buffer.size()<sizeof(DataOut) )
+                if( ser_buffer.size()<sizeof(UltraSndDataOut) )
                 {
                     ROS_DEBUG_STREAM( "Data incomplete" );
                     continue;
@@ -164,27 +260,38 @@ int main(int argc, char** argv)
                     continue;
                 // <<<<< Second byte is correct? [0x5A]
 
-                // Data copy
-                memcpy( (char*)&received, ser_buffer.data(), sizeof(DataOut) );
+                uint8_t type=0xff;
 
-                // >>>>> Terminator is correct? [0x0d0a]
-                if( received.ctrl_frame_1 != 0x0d0a )
+                type = ser_buffer.at(3);
+
+                if( type==MSG_ULTRASOUND )
                 {
-                    ROS_DEBUG_STREAM( "Bad data!!!" );
+                    // Data copy
+                    memcpy( (char*)&received, ser_buffer.data(), sizeof(UltraSndDataOut) );
 
-                    // If the terminator is not correct I remove only the Synchronizing
-                    // word [0x5AA5] because it was a false beginning.
-                    // The next cycle I start searching for first byte [0xA5] again
+                    // >>>>> Terminator is correct? [0x0d0a]
+                    if( received.ctrl_frame_1 != 0x0d0a )
+                    {
+                        ROS_DEBUG_STREAM( "Bad data!!!" );
 
+                        // If the terminator is not correct I remove only the Synchronizing
+                        // word [0x5AA5] because it was a false beginning.
+                        // The next cycle I start searching for first byte [0xA5] again
+
+                        ser_buffer.erase( ser_buffer.begin(),
+                                          ser_buffer.begin()+2 );
+                        continue;
+                    }
+                    // <<<<< Terminator is correct? [0x0d0a]
+
+                    // Removing processed data
                     ser_buffer.erase( ser_buffer.begin(),
-                                      ser_buffer.begin()+2 );
-                    continue;
+                                      ser_buffer.begin()+ sizeof(UltraSndDataOut) );
                 }
-                // <<<<< Terminator is correct? [0x0d0a]
-
-                // Removing processed data
-                ser_buffer.erase( ser_buffer.begin(),
-                                  ser_buffer.begin()+ sizeof(DataOut) );
+                else
+                {
+                    ROS_WARN_STREAM( "Received invalide message type: " << type );
+                }
             }
             else // Distance bypass to not block "twist messages"
             {
